@@ -33,7 +33,7 @@ use xi_plugin_lib::{Plugin, ChunkCache, View, mainloop, Error};
 /// intended to demonstrate how to edit a document; when the plugin is active,
 /// and the user inserts an exclamation mark, the plugin will capitalize the
 /// preceding word.
-struct SamplePlugin;
+struct SamplePlugin(usize);
 
 //NOTE: implementing the `Plugin` trait is the sole requirement of a plugin.
 // For more documentation, see `rust/plugin-lib` in this repo.
@@ -42,10 +42,12 @@ impl Plugin for SamplePlugin {
 
     fn new_view(&mut self, view: &mut View<Self::Cache>) {
         eprintln!("new view {}", view.get_id());
+        view.add_status_item("my_key", &format!("hello {}", self.0), "left");
     }
 
     fn did_close(&mut self, view: &View<Self::Cache>) {
         eprintln!("close view {}", view.get_id());
+        view.remove_status_item("my_key");
     }
 
     fn did_save(&mut self, view: &mut View<Self::Cache>, _old: Option<&Path>) {
@@ -60,7 +62,6 @@ impl Plugin for SamplePlugin {
 
         //NOTE: example simple conditional edit. If this delta is
         //an insert of a single '!', we capitalize the preceding word.
-
         if let Some(delta) = delta {
             let (iv, _) = delta.summary();
             let text: String = delta.as_simple_insert()
@@ -70,6 +71,8 @@ impl Plugin for SamplePlugin {
                 let _ = self.capitalize_word(view, iv.end());
             }
         }
+        self.0 += 1;
+        view.update_status_item("my_key", &format!("hello {}", self.0));
     }
 }
 
@@ -108,6 +111,6 @@ impl SamplePlugin {
 }
 
 fn main() {
-    let mut plugin = SamplePlugin;
+    let mut plugin = SamplePlugin(0);
     mainloop(&mut plugin).unwrap();
 }
