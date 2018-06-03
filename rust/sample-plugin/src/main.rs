@@ -20,8 +20,10 @@ extern crate xi_core_lib as xi_core;
 extern crate xi_rope;
 
 use std::path::Path;
+use std::collections::HashMap;
 
 use xi_core::ConfigTable;
+use xi_core::ViewId;
 use xi_rope::rope::RopeDelta;
 use xi_rope::interval::Interval;
 use xi_rope::delta::Builder as EditBuilder;
@@ -33,7 +35,10 @@ use xi_plugin_lib::{Plugin, ChunkCache, View, mainloop, Error};
 /// intended to demonstrate how to edit a document; when the plugin is active,
 /// and the user inserts an exclamation mark, the plugin will capitalize the
 /// preceding word.
-struct SamplePlugin(usize);
+#[derive(Default)]
+struct SamplePlugin {
+    views: HashMap<ViewId, HashMap<char, usize>>
+}
 
 //NOTE: implementing the `Plugin` trait is the sole requirement of a plugin.
 // For more documentation, see `rust/plugin-lib` in this repo.
@@ -42,12 +47,14 @@ impl Plugin for SamplePlugin {
 
     fn new_view(&mut self, view: &mut View<Self::Cache>) {
         eprintln!("new view {}", view.get_id());
-        view.add_status_item("my_key", &format!("hello {}", self.0), "left");
+        self.views.insert(view.get_id(), HashMap::new());
+        // view.add_status_item("my_key", &format!("hello {}", self.0), "left");
     }
 
     fn did_close(&mut self, view: &View<Self::Cache>) {
         eprintln!("close view {}", view.get_id());
-        view.remove_status_item("my_key");
+        self.views.remove(&view.get_id());
+        // view.remove_status_item("my_key");
     }
 
     fn did_save(&mut self, view: &mut View<Self::Cache>, _old: Option<&Path>) {
@@ -69,20 +76,10 @@ impl Plugin for SamplePlugin {
                 .unwrap_or_default();
             if text == "!" {
                 let _ = self.capitalize_word(view, iv.end());
+            } else {
+                // update_status
+                self.update_status(view, &text);
             }
-        }
-        self.0 += 1;
-        view.update_status_item("my_key", &format!("hello {}", self.0));
-        if self.0 == 50 {
-            view.add_status_item("my_key_2", &format!("hi there {}", self.0), "left");
-            view.add_status_item("my_key_3", &format!("howdy {}", self.0), "right");
-        }
-        if self.0 == 100 {
-            view.remove_status_item("my_key_2");
-            view.add_status_item("my_key_4", &format!("hiya {}", self.0), "left");
-        }
-        if self.0 == 200 {
-            view.remove_status_item("my_key_3");
         }
     }
 }
@@ -119,9 +116,41 @@ impl SamplePlugin {
         view.edit(builder.build(), 0, false, true, "sample".into());
         Ok(())
     }
+
+    fn update_status(&mut self, view: &mut View<ChunkCache>, text: &str) {
+        if text.chars().count() < 1 {
+            return;
+        }
+        let view_state = self.views.get_mut(&view.get_id()).unwrap();
+        let chr = text.chars().next().unwrap();
+        match chr {
+            uppercase_letter @ 'A' ... 'Z' => {
+                let lower = uppercase_letter.to_lowercase().next().unwrap();
+                if view_state.remove(&lower).is_some() {
+                    view.remove_status_item(&lower.to_string());
+                }
+            }
+            letter @ 'a' ... 'z' => { 
+                if !view_state.contains_key(&letter) {
+                    view_state.insert(letter, 1);
+                    if letter < 'l' {
+                        view.add_status_item(&letter.to_string(), &format!("{:?}:1", &letter.to_string()), "left");
+                    } else {
+                        view.add_status_item(&letter.to_string(), &format!("{:?}:1", &letter.to_string()), "right");
+                    }
+                } else {
+                    let letter_count = view_state.get_mut(&letter).unwrap();
+                    *letter_count += 1;
+                    view.update_status_item(&letter.to_string(), &format!("{:?}:{:?}", &letter.to_string(), letter_count));
+                }
+            },
+            _ => (),
+        }
+
+    }
 }
 
 fn main() {
-    let mut plugin = SamplePlugin(0);
+    let mut plugin = SamplePlugin::default();
     mainloop(&mut plugin).unwrap();
 }
