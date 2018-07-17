@@ -19,13 +19,19 @@ extern crate xi_plugin_lib;
 extern crate xi_core_lib as xi_core;
 extern crate xi_rope;
 
-use std::path::Path;
+#[macro_use]
+extern crate serde_json;
 
+use std::path::Path;
 use xi_core::ConfigTable;
 use xi_rope::rope::RopeDelta;
 use xi_rope::interval::Interval;
+use xi_core::plugin_rpc::{Definition, Hover, LanguageResponseError};
 use xi_rope::delta::Builder as EditBuilder;
-use xi_plugin_lib::{Plugin, ChunkCache, View, mainloop, Error};
+use xi_plugin_lib::{
+    mainloop, Cache, ChunkCache, CoreProxy, Error, Plugin,
+    Position as CorePosition, View,
+};
 
 /// A type that implements the `Plugin` trait, and interacts with xi-core.
 ///
@@ -33,12 +39,18 @@ use xi_plugin_lib::{Plugin, ChunkCache, View, mainloop, Error};
 /// intended to demonstrate how to edit a document; when the plugin is active,
 /// and the user inserts an exclamation mark, the plugin will capitalize the
 /// preceding word.
-struct SamplePlugin;
+struct SamplePlugin {
+    core: Option<CoreProxy>
+}
 
 //NOTE: implementing the `Plugin` trait is the sole requirement of a plugin.
 // For more documentation, see `rust/plugin-lib` in this repo.
 impl Plugin for SamplePlugin {
     type Cache = ChunkCache;
+
+    fn initialize(&mut self, core: CoreProxy) {
+        self.core = Some(core)
+    }
 
     fn new_view(&mut self, view: &mut View<Self::Cache>) {
         eprintln!("new view {}", view.get_id());
@@ -68,6 +80,21 @@ impl Plugin for SamplePlugin {
             if text == "!" {
                 let _ = self.capitalize_word(view, iv.end());
             }
+        }
+    }
+
+     fn get_hover(
+        &mut self,
+        view: &mut View<Self::Cache>,
+        request_id: usize,
+        position: CorePosition,
+    ) {
+        let rev = view.rev;
+        let view_id = view.get_id();
+        eprintln!("Hello");
+        let res = Hover{content: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.".to_string(), range: None};
+        if let Some(ref mut core) = self.core {
+            core.display_hover(view_id, request_id, Ok(res), rev);
         }
     }
 }
@@ -107,6 +134,8 @@ impl SamplePlugin {
 }
 
 fn main() {
-    let mut plugin = SamplePlugin;
+    let mut plugin = SamplePlugin {
+        core: None
+    };
     mainloop(&mut plugin).unwrap();
 }
