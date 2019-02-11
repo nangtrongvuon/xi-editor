@@ -176,6 +176,7 @@ impl<'a> EventContext<'a> {
             }
             SpecialEvent::DebugToggleComment => self.do_debug_toggle_comment(),
             SpecialEvent::Reindent => self.do_reindent(),
+            SpecialEvent::ShowQuickOpen => self.do_show_quick_open(),
             SpecialEvent::ToggleRecording(_) => {}
             SpecialEvent::PlayRecording(recording_name) => {
                 let recorder = self.recorder.borrow();
@@ -697,6 +698,11 @@ impl<'a> EventContext<'a> {
             }
             Err(err) => warn!("Hover Response from Client Error {:?}", err),
         }
+    }
+
+    fn do_show_quick_open(&self) {
+        let view = self.view.borrow();
+        view.show_quick_open();
     }
 
     /// Gives the requested position in UTF-8 offset format to be sent to plugin

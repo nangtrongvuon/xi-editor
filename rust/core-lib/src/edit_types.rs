@@ -90,6 +90,7 @@ pub(crate) enum SpecialEvent {
     ToggleRecording(Option<String>),
     PlayRecording(String),
     ClearRecording(String),
+    ShowQuickOpen,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -298,6 +299,7 @@ impl From<EditNotification> for EventDomain {
             PlayRecording { recording_name } => SpecialEvent::PlayRecording(recording_name).into(),
             ClearRecording { recording_name } => SpecialEvent::ClearRecording(recording_name).into(),
             CollapseSelections => ViewEvent::CollapseSelections.into(),
+            ShowQuickOpen => SpecialEvent::ShowQuickOpen.into(),
         }
     }
 }

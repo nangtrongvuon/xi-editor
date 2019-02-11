@@ -82,6 +82,7 @@ pub mod line_cache_shadow;
 pub mod line_ending;
 pub mod linewrap;
 pub mod movement;
+pub mod quick_open;
 pub mod plugins;
 pub mod recorder;
 pub mod selection;

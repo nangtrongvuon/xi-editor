@@ -527,6 +527,7 @@ pub enum EditNotification {
         recording_name: String,
     },
     CollapseSelections,
+    ShowQuickOpen,
 }
 
 /// The edit related requests.
