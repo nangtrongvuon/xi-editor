@@ -18,6 +18,7 @@ notify = { optional = true, version = "=5.0.0-pre.1" }
 regex = "1.0"
 memchr = "2.0.1"
 crossbeam-channel = "0.3"
+walkdir = "2"
 
 xi-trace = { path = "../trace", version = "0.2.0" }
 xi-rope = { path = "../rope", version = "0.3", features = ["serde"] }

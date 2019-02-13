@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::cmp::{max, min};
 use std::iter;
 use std::ops::Range;
+use std::path::Path;
 
 use serde_json::Value;
 
@@ -1022,8 +1023,8 @@ impl View {
     }
 
     // Quick open stuff
-    pub fn show_quick_open(&self) {
-        self.quick_open.say_hello();
+    pub fn show_quick_open(&self, path: &Path) {
+        self.quick_open.say_hello(path);
     }
 
     fn do_selection_for_find(&mut self, text: &Rope, case_sensitive: bool) {

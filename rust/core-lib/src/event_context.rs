@@ -16,6 +16,7 @@
 
 use std::cell::RefCell;
 use std::iter;
+use std::fs;
 use std::ops::Range;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -702,7 +703,11 @@ impl<'a> EventContext<'a> {
 
     fn do_show_quick_open(&self) {
         let view = self.view.borrow();
-        view.show_quick_open();
+        if let Some(file_info) = self.info {
+            let mut path = file_info.path.to_owned();
+            path.pop();
+            view.show_quick_open(&path);
+        }
     }
 
     /// Gives the requested position in UTF-8 offset format to be sent to plugin
