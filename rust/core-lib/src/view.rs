@@ -1023,8 +1023,8 @@ impl View {
     }
 
     // Quick open stuff
-    pub fn show_quick_open(&self, path: &Path) {
-        self.quick_open.say_hello(path);
+    pub fn show_quick_open(&mut self, path: &Path) {
+        self.quick_open.initialize_workspace_matches(path);
     }
 
     fn do_selection_for_find(&mut self, text: &Rope, case_sensitive: bool) {

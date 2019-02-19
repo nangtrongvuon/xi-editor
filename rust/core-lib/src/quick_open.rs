@@ -1,6 +1,7 @@
 extern crate walkdir;
 
 use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap};
 use walkdir::{DirEntry, WalkDir};
 
 // An instance of quick open
@@ -12,27 +13,37 @@ use walkdir::{DirEntry, WalkDir};
 
 
 pub struct QuickOpen {
-
+	workspace_items: Vec<PathBuf>
 }
 
 impl QuickOpen {
 	pub fn new() -> QuickOpen {
-		QuickOpen {} 
+		QuickOpen {
+			workspace_items: Vec::new(),
+		} 
 	}
 
-	pub fn is_not_hidden(&self, entry: &DirEntry) -> bool {
+	pub fn initialize_workspace_matches(&mut self, folder: &Path) {
+
+		fn is_not_hidden(entry: &DirEntry) -> bool {
 			entry.file_name()
 				 .to_str()
 				 .map(|s| entry.depth() == 0 || !s.starts_with("."))
 				 .unwrap_or(false)
-	}
+		}
 
-	pub fn say_hello(&self, folder: &Path) {
 		WalkDir::new(folder)
 			.into_iter()
-			.filter_entry(|e| self.is_not_hidden(e))
+			.filter_entry(|e| is_not_hidden(e))
 			.filter_map(|v| v.ok())
-			.for_each(|x| eprintln!("{}", x.path().display()));
+			.for_each(|x| {
+					let path = x.into_path();
+					if !self.workspace_items.contains(&path) {
+						self.workspace_items.push(path);
+					}
+				});
+
+		eprintln!("{:?}", self.workspace_items);
 	}
 
 	// Returns true if every char in pattern is found in string
