@@ -30,7 +30,7 @@ use crate::linewrap::{InvalLines, Lines, VisualLine, WrapWidth};
 use crate::movement::{region_movement, selection_movement, Movement};
 use crate::plugins::PluginId;
 use crate::rpc::{FindQuery, GestureType, MouseAction, SelectionGranularity, SelectionModifier};
-use crate::quick_open::QuickOpen;
+use crate::quick_open::{QuickOpen, FuzzyResult};
 use crate::selection::{Affinity, InsertDrift, SelRegion, Selection};
 use crate::styles::{Style, ThemeStyleMap};
 use crate::tabs::{BufferId, Counter, ViewId};
@@ -1025,6 +1025,10 @@ impl View {
     // Quick open stuff
     pub fn show_quick_open(&mut self, path: &Path) {
         self.quick_open.initialize_workspace_matches(path);
+    }
+
+    pub fn request_quick_open_completion(&mut self, current_completion: String) -> Vec<FuzzyResult> {
+        return self.quick_open.initiate_fuzzy_match(&current_completion);
     }
 
     fn do_selection_for_find(&mut self, text: &Rope, case_sensitive: bool) {

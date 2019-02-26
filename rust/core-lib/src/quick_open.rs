@@ -2,7 +2,6 @@ extern crate walkdir;
 
 use std::path::{Path, PathBuf};
 use std::cmp::{max};
-use std::collections::{BTreeMap};
 use walkdir::{DirEntry, WalkDir};
 
 // An instance of quick open
@@ -21,19 +20,29 @@ const BONUS_CAMEL: usize = BONUS_BOUNDARY + SCORE_GAP_EXTENSION;
 const BONUS_CONSECUTIVE: usize = SCORE_GAP_START + SCORE_GAP_EXTENSION;
 const BONUS_FIRST_CHAR_MULTIPLIER: usize = 2;
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FuzzyResult {
+	result_name: Option<String>,
+	score: usize
+}
+
 pub struct QuickOpen {
-	workspace_items: Vec<PathBuf>
+	// All the items found in the workspace.
+	workspace_items: Vec<PathBuf>,
+
+	// Fuzzy find results, sorted descending by score.
+	fuzzy_results: Vec<FuzzyResult>,
 }
 
 impl QuickOpen {
 	pub fn new() -> QuickOpen {
 		QuickOpen {
 			workspace_items: Vec::new(),
+			fuzzy_results: Vec::new(),
 		} 
 	}
 
 	pub fn initialize_workspace_matches(&mut self, folder: &Path) {
-
 		fn is_not_hidden(entry: &DirEntry) -> bool {
 			entry.file_name()
 				 .to_str()
@@ -55,6 +64,18 @@ impl QuickOpen {
 		eprintln!("{:?}", self.workspace_items);
 	}
 
+	pub fn initiate_fuzzy_match(&mut self, current_completion: &str) -> Vec<FuzzyResult> {
+		for item in &self.workspace_items {
+			if let Some(item_path_str) = item.to_str() {
+				let fuzzy_result = self.fuzzy_match(current_completion, item_path_str);	
+				self.fuzzy_results.push(fuzzy_result);	
+			} 
+		}
+
+		self.fuzzy_results.sort_by(|a, b| b.score.cmp(&a.score));
+		return self.fuzzy_results.clone()
+	}
+
 	// Returns true if every char in pattern is found in text
 	fn fuzzy_match_simple(pattern: &str, text: &str) -> bool {
 		let mut count = 0;
@@ -71,9 +92,9 @@ impl QuickOpen {
 		count == pattern.len()
 	}
 
-	fn fuzzy_match(&self, pattern: &str, text: &str) -> (bool, usize) {
+	fn fuzzy_match(&self, pattern: &str, text: &str) -> FuzzyResult {
 		if pattern.len() == 0 {
-			return (false, 0)
+			return FuzzyResult { result_name: None, score: 0 }
 		}
 
 		let mut p_index = 0;
@@ -103,11 +124,11 @@ impl QuickOpen {
 			}
 		}
 
-		if start_index >= 0 && end_index >= 0 {
+		if start_index > 0 && end_index > 0 {
 
 			for i in (start_index..end_index - 1).rev() {
-				let mut second_text_index = text_length - i - 1;
-				let mut second_p_index = pattern_length - p_index - 1;	
+				let second_text_index = text_length - i - 1;
+				let second_p_index = pattern_length - p_index - 1;	
 
 				if let (Some(current_char), Some(pattern_char)) = (text.chars().nth(second_text_index), pattern.chars().nth(second_p_index)) {
 					if current_char == pattern_char {
@@ -121,16 +142,18 @@ impl QuickOpen {
 			}
 
 			let score = self.calculate_score(pattern, text, start_index, end_index);
-			return (true, score)
+			return FuzzyResult { result_name: Some(text.to_string()), score: score }
+
+		} else {
+
+			// start_index = text_length - end_index;
+			// end_index = text_length - start_index;
+
+			return FuzzyResult { result_name: None, score: 0 }
 		}
-
-		start_index = text_length - end_index;
-		end_index = text_length - start_index;
-
-		return (false, 0)
 	}
 
-	fn calculate_score(&self, pattern: &str, text: &str, start_index: usize, end_index: usize) ->usize {
+	fn calculate_score(&self, pattern: &str, text: &str, start_index: usize, end_index: usize) -> usize {
 
 		let mut pattern_index = 0;
 		let mut score = 0;

@@ -528,6 +528,9 @@ pub enum EditNotification {
     },
     CollapseSelections,
     ShowQuickOpen,
+    RequestQuickOpenCompletion {
+        current_completion: String,
+    },
 }
 
 /// The edit related requests.

@@ -91,6 +91,7 @@ pub(crate) enum SpecialEvent {
     PlayRecording(String),
     ClearRecording(String),
     ShowQuickOpen,
+    RequestQuickOpenCompletion(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -300,6 +301,7 @@ impl From<EditNotification> for EventDomain {
             ClearRecording { recording_name } => SpecialEvent::ClearRecording(recording_name).into(),
             CollapseSelections => ViewEvent::CollapseSelections.into(),
             ShowQuickOpen => SpecialEvent::ShowQuickOpen.into(),
+            RequestQuickOpenCompletion { current_completion } => SpecialEvent::RequestQuickOpenCompletion(current_completion).into(),
         }
     }
 }

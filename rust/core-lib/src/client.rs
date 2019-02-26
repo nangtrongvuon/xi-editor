@@ -23,6 +23,7 @@ use crate::config::Table;
 use crate::plugins::rpc::ClientPluginInfo;
 use crate::plugins::Command;
 use crate::styles::ThemeSettings;
+use crate::quick_open::FuzzyResult;
 use crate::syntax::LanguageId;
 use crate::tabs::ViewId;
 use crate::width_cache::{WidthReq, WidthResponse};
@@ -224,6 +225,15 @@ impl Client {
                 "view_id": view_id,
                 "request_id": request_id,
                 "result": result,
+            }),
+        )
+    }
+
+    pub fn show_quick_open_results(&self, fuzzy_results: &[FuzzyResult]) {
+        self.0.send_rpc_notification(
+            "show_fuzzy_find_results",
+            &json!({
+                "fuzzy_results": fuzzy_results,
             }),
         )
     }

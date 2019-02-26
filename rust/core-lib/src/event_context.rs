@@ -16,7 +16,6 @@
 
 use std::cell::RefCell;
 use std::iter;
-use std::fs;
 use std::ops::Range;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -178,6 +177,7 @@ impl<'a> EventContext<'a> {
             SpecialEvent::DebugToggleComment => self.do_debug_toggle_comment(),
             SpecialEvent::Reindent => self.do_reindent(),
             SpecialEvent::ShowQuickOpen => self.do_show_quick_open(),
+            SpecialEvent::RequestQuickOpenCompletion(current_completion) => self.do_request_quick_open_completions(current_completion),
             SpecialEvent::ToggleRecording(_) => {}
             SpecialEvent::PlayRecording(recording_name) => {
                 let recorder = self.recorder.borrow();
@@ -707,6 +707,16 @@ impl<'a> EventContext<'a> {
             let mut path = file_info.path.to_owned();
             path.pop();
             view.show_quick_open(&path);
+        }
+    }
+
+    fn do_request_quick_open_completions(&self, current_completion: String) {
+        let mut view = self.view.borrow_mut();
+        if let Some(file_info) = self.info {
+            let mut path = file_info.path.to_owned();
+            path.pop();
+            let quick_open_results = view.request_quick_open_completion(current_completion);
+            self.client.show_quick_open_results(&quick_open_results);
         }
     }
 
