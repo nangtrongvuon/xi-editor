@@ -527,10 +527,11 @@ pub enum EditNotification {
         recording_name: String,
     },
     CollapseSelections,
-    ShowQuickOpen,
+    InitiateQuickOpenSession,
     RequestQuickOpenCompletion {
-        current_completion: String,
+        query: String,
     },
+    ShowQuickOpenCompletions,
 }
 
 /// The edit related requests.

@@ -176,8 +176,9 @@ impl<'a> EventContext<'a> {
             }
             SpecialEvent::DebugToggleComment => self.do_debug_toggle_comment(),
             SpecialEvent::Reindent => self.do_reindent(),
-            SpecialEvent::ShowQuickOpen => self.do_show_quick_open(),
-            SpecialEvent::RequestQuickOpenCompletion(current_completion) => self.do_request_quick_open_completions(current_completion),
+            SpecialEvent::InitiateQuickOpenSession => self.do_initiate_quick_open_session(),
+            SpecialEvent::RequestQuickOpenCompletion(query) => self.do_request_quick_open_completions(query),
+            SpecialEvent::ShowQuickOpenCompletions => self.do_show_quick_open(),
             SpecialEvent::ToggleRecording(_) => {}
             SpecialEvent::PlayRecording(recording_name) => {
                 let recorder = self.recorder.borrow();
@@ -701,7 +702,7 @@ impl<'a> EventContext<'a> {
         }
     }
 
-    fn do_show_quick_open(&self) {
+    fn do_initiate_quick_open_session(&self) {
         let mut view = self.view.borrow_mut();
         if let Some(file_info) = self.info {
             let mut path = file_info.path.to_owned();
@@ -710,12 +711,18 @@ impl<'a> EventContext<'a> {
         }
     }
 
-    fn do_request_quick_open_completions(&self, current_completion: String) {
+    fn do_show_quick_open(&self) {
+        
+    }
+
+    fn do_request_quick_open_completions(&self, query: String) {
         let mut view = self.view.borrow_mut();
+        eprintln!("quick open for query: {:?}", &query);
         if let Some(file_info) = self.info {
             let mut path = file_info.path.to_owned();
             path.pop();
-            let quick_open_results = view.request_quick_open_completion(current_completion);
+            eprintln!("quick open for query: {:?}", &query);
+            let quick_open_results = view.request_quick_open_completion(query);
             self.client.show_quick_open_results(&quick_open_results);
         }
     }

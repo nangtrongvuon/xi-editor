@@ -64,10 +64,10 @@ impl QuickOpen {
 		eprintln!("{:?}", self.workspace_items);
 	}
 
-	pub fn initiate_fuzzy_match(&mut self, current_completion: &str) -> Vec<FuzzyResult> {
+	pub fn initiate_fuzzy_match(&mut self, query: &str) -> Vec<FuzzyResult> {
 		for item in &self.workspace_items {
 			if let Some(item_path_str) = item.to_str() {
-				let fuzzy_result = self.fuzzy_match(current_completion, item_path_str);	
+				let fuzzy_result = self.fuzzy_match(query, item_path_str);	
 				self.fuzzy_results.push(fuzzy_result);	
 			} 
 		}

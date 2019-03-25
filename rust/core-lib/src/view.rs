@@ -1023,8 +1023,12 @@ impl View {
     }
 
     // Quick open stuff
-    pub fn show_quick_open(&mut self, path: &Path) {
+    pub fn initiate_quick_open_session(&mut self, path: &Path) {
         self.quick_open.initialize_workspace_matches(path);
+    }
+
+    pub fn show_quick_open(&mut self, path: &Path) {
+        // Returns result to client
     }
 
     pub fn request_quick_open_completion(&mut self, current_completion: String) -> Vec<FuzzyResult> {

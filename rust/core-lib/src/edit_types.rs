@@ -90,8 +90,9 @@ pub(crate) enum SpecialEvent {
     ToggleRecording(Option<String>),
     PlayRecording(String),
     ClearRecording(String),
-    ShowQuickOpen,
+    InitiateQuickOpenSession,
     RequestQuickOpenCompletion(String),
+    ShowQuickOpenCompletions,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -300,8 +301,9 @@ impl From<EditNotification> for EventDomain {
             PlayRecording { recording_name } => SpecialEvent::PlayRecording(recording_name).into(),
             ClearRecording { recording_name } => SpecialEvent::ClearRecording(recording_name).into(),
             CollapseSelections => ViewEvent::CollapseSelections.into(),
-            ShowQuickOpen => SpecialEvent::ShowQuickOpen.into(),
-            RequestQuickOpenCompletion { current_completion } => SpecialEvent::RequestQuickOpenCompletion(current_completion).into(),
+            InitiateQuickOpenSession => SpecialEvent::InitiateQuickOpenSession.into(),
+            RequestQuickOpenCompletion { query } => SpecialEvent::RequestQuickOpenCompletion(query).into(),
+            ShowQuickOpenCompletions => SpecialEvent::ShowQuickOpenCompletions.into(),
         }
     }
 }
