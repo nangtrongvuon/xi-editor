@@ -26,7 +26,7 @@ pub struct FuzzyResult {
 	score: usize
 }
 
-pub struct QuickOpen {
+pub(crate) struct QuickOpen {
 	// All the items found in the workspace.
 	workspace_items: Vec<PathBuf>,
 
@@ -42,7 +42,7 @@ impl QuickOpen {
 		} 
 	}
 
-	pub fn initialize_workspace_matches(&mut self, folder: &Path) {
+	pub(crate) fn initialize_workspace_matches(&mut self, folder: &Path) {
 		fn is_not_hidden(entry: &DirEntry) -> bool {
 			entry.file_name()
 				 .to_str()
@@ -60,20 +60,22 @@ impl QuickOpen {
 						self.workspace_items.push(path);
 					}
 				});
-
-		eprintln!("{:?}", self.workspace_items);
 	}
 
-	pub fn initiate_fuzzy_match(&mut self, query: &str) -> Vec<FuzzyResult> {
+	// Returns a sorted by score list of fuzzy find results.
+	pub(crate) fn get_quick_open_results(&mut self) -> Vec<FuzzyResult> {
+		let mut sorted_result = self.fuzzy_results.clone();
+		sorted_result.sort_by(|a, b| b.score.cmp(&a.score));
+		sorted_result
+	}
+
+	pub(crate) fn initiate_fuzzy_match(&mut self, query: &str) {
 		for item in &self.workspace_items {
 			if let Some(item_path_str) = item.to_str() {
 				let fuzzy_result = self.fuzzy_match(query, item_path_str);	
 				self.fuzzy_results.push(fuzzy_result);	
 			} 
 		}
-
-		self.fuzzy_results.sort_by(|a, b| b.score.cmp(&a.score));
-		return self.fuzzy_results.clone()
 	}
 
 	// Returns true if every char in pattern is found in text

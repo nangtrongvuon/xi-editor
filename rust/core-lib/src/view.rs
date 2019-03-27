@@ -17,7 +17,6 @@ use std::cell::RefCell;
 use std::cmp::{max, min};
 use std::iter;
 use std::ops::Range;
-use std::path::Path;
 
 use serde_json::Value;
 
@@ -30,7 +29,6 @@ use crate::linewrap::{InvalLines, Lines, VisualLine, WrapWidth};
 use crate::movement::{region_movement, selection_movement, Movement};
 use crate::plugins::PluginId;
 use crate::rpc::{FindQuery, GestureType, MouseAction, SelectionGranularity, SelectionModifier};
-use crate::quick_open::{QuickOpen, FuzzyResult};
 use crate::selection::{Affinity, InsertDrift, SelRegion, Selection};
 use crate::styles::{Style, ThemeStyleMap};
 use crate::tabs::{BufferId, Counter, ViewId};
@@ -78,9 +76,6 @@ pub struct View {
     /// The state for finding text for this view.
     /// Each instance represents a separate search query.
     find: Vec<Find>,
-
-    // Quick open stuff
-    quick_open: QuickOpen,
 
     /// Tracks the IDs for additional search queries in find.
     find_id_counter: Counter,
@@ -177,7 +172,6 @@ impl View {
             lines: Lines::default(),
             lc_shadow: LineCacheShadow::default(),
             find: Vec::new(),
-            quick_open: QuickOpen::new(),
             find_id_counter: Counter::default(),
             find_changed: FindStatusChange::None,
             find_progress: FindProgress::Ready,
@@ -1020,19 +1014,6 @@ impl View {
         // of the delta so we can set the cursor before or after the edit, as needed.
         let new_sel = self.selection.apply_delta(delta, true, drift);
         self.set_selection_for_edit(text, new_sel);
-    }
-
-    // Quick open stuff
-    pub fn initiate_quick_open_session(&mut self, path: &Path) {
-        self.quick_open.initialize_workspace_matches(path);
-    }
-
-    pub fn show_quick_open(&mut self, path: &Path) {
-        // Returns result to client
-    }
-
-    pub fn request_quick_open_completion(&mut self, current_completion: String) -> Vec<FuzzyResult> {
-        return self.quick_open.initiate_fuzzy_match(&current_completion);
     }
 
     fn do_selection_for_find(&mut self, text: &Rope, case_sensitive: bool) {

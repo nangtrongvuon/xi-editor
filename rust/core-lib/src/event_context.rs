@@ -30,7 +30,9 @@ use crate::plugins::rpc::{
     ClientPluginInfo, Hover, PluginBufferInfo, PluginNotification, PluginRequest, PluginUpdate,
 };
 use crate::rpc::{EditNotification, EditRequest, LineRange, Position as ClientPosition};
-
+use crate::config::{BufferItems, Table};
+use crate::styles::ThemeStyleMap;
+use crate::quick_open::{QuickOpen};
 use crate::client::Client;
 use crate::config::{BufferItems, Table};
 use crate::edit_types::{EventDomain, SpecialEvent};
@@ -68,6 +70,7 @@ pub struct EventContext<'a> {
     pub(crate) info: Option<&'a FileInfo>,
     pub(crate) config: &'a BufferItems,
     pub(crate) recorder: &'a RefCell<Recorder>,
+    pub(crate) quick_open: &'a RefCell<QuickOpen>,
     pub(crate) language: LanguageId,
     pub(crate) view: &'a RefCell<View>,
     pub(crate) siblings: Vec<&'a RefCell<View>>,
@@ -703,28 +706,32 @@ impl<'a> EventContext<'a> {
     }
 
     fn do_initiate_quick_open_session(&self) {
-        let mut view = self.view.borrow_mut();
+        let mut quick_open = self.quick_open.borrow_mut();
+        eprintln!("quick open called");
         if let Some(file_info) = self.info {
             let mut path = file_info.path.to_owned();
             path.pop();
-            view.show_quick_open(&path);
+            eprintln!("initiated quick open in path: {:?}", &path);
+            quick_open.initialize_workspace_matches(&path);
         }
     }
 
-    fn do_show_quick_open(&self) {
-        
-    }
-
     fn do_request_quick_open_completions(&self, query: String) {
-        let mut view = self.view.borrow_mut();
+        let mut quick_open = self.quick_open.borrow_mut();
         eprintln!("quick open for query: {:?}", &query);
         if let Some(file_info) = self.info {
             let mut path = file_info.path.to_owned();
             path.pop();
-            eprintln!("quick open for query: {:?}", &query);
-            let quick_open_results = view.request_quick_open_completion(query);
-            self.client.show_quick_open_results(&quick_open_results);
+            eprintln!("quick open for query: {:?}", query);
+            quick_open.initiate_fuzzy_match(&query);
         }
+    }
+
+    // TODO: Forward completions back to client
+    fn do_show_quick_open(&self) {
+        let mut quick_open = self.quick_open.borrow_mut();
+        let quick_open_results = quick_open.get_quick_open_results();
+        self.client.show_quick_open_results(&quick_open_results);
     }
 
     /// Gives the requested position in UTF-8 offset format to be sent to plugin
@@ -756,6 +763,7 @@ mod tests {
         width_cache: RefCell<WidthCache>,
         config_manager: ConfigManager,
         recorder: RefCell<Recorder>,
+        quick_open: RefCell<QuickOpen>,
     }
 
     impl ContextHarness {
@@ -774,8 +782,9 @@ mod tests {
             let style_map = RefCell::new(ThemeStyleMap::new(None));
             let width_cache = RefCell::new(WidthCache::new());
             let recorder = RefCell::new(Recorder::new());
+            let quick_open = RefCell::new(QuickOpen::new());
             let harness = ContextHarness { view, editor, client, core_ref, kill_ring,
-                             style_map, width_cache, config_manager, recorder };
+                             style_map, width_cache, config_manager, recorder, quick_open };
             harness.make_context().view_init();
             harness.make_context().finish_init(&config);
             harness
@@ -818,6 +827,7 @@ mod tests {
                 siblings: Vec::new(),
                 plugins: Vec::new(),
                 recorder: &self.recorder,
+                quick_open: &self.quick_open,
                 client: &self.client,
                 kill_ring: &self.kill_ring,
                 style_map: &self.style_map,

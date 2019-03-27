@@ -45,6 +45,7 @@ use crate::plugin_rpc::{PluginNotification, PluginRequest};
 use crate::plugins::rpc::ClientPluginInfo;
 use crate::plugins::{start_plugin_process, Plugin, PluginCatalog, PluginPid};
 use crate::recorder::Recorder;
+use crate::quick_open::QuickOpen;
 use crate::rpc::{
     CoreNotification, CoreRequest, EditNotification, EditRequest,
     PluginNotification as CorePluginNotification,
@@ -114,6 +115,8 @@ pub struct CoreState {
     config_manager: ConfigManager,
     /// Recorded editor actions
     recorder: RefCell<Recorder>,
+    /// Quick open manager
+    quick_open: RefCell<QuickOpen>,
     /// A weak reference to the main state container, stashed so that
     /// it can be passed to plugins.
     self_ref: Option<WeakXiCore>,
@@ -178,6 +181,7 @@ impl CoreState {
             width_cache: RefCell::new(WidthCache::new()),
             config_manager,
             recorder: RefCell::new(Recorder::new()),
+            quick_open: RefCell::new(QuickOpen::new()),
             self_ref: None,
             pending_views: Vec::new(),
             peer: Client::new(peer.clone()),
@@ -289,6 +293,7 @@ impl CoreState {
                 editor,
                 config: &config.items,
                 recorder: &self.recorder,
+                quick_open: &self.quick_open,
                 language,
                 info,
                 siblings: Vec::new(),

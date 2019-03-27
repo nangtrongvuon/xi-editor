@@ -231,9 +231,9 @@ impl Client {
 
     pub fn show_quick_open_results(&self, fuzzy_results: &[FuzzyResult]) {
         self.0.send_rpc_notification(
-            "show_fuzzy_find_results",
+            "show_quick_open_completions",
             &json!({
-                "fuzzy_results": fuzzy_results,
+                "completions": fuzzy_results,
             }),
         )
     }
