@@ -531,7 +531,6 @@ pub enum EditNotification {
     RequestQuickOpenCompletion {
         query: String,
     },
-    ShowQuickOpenCompletions,
 }
 
 /// The edit related requests.

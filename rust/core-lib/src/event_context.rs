@@ -181,7 +181,6 @@ impl<'a> EventContext<'a> {
             SpecialEvent::Reindent => self.do_reindent(),
             SpecialEvent::InitiateQuickOpenSession => self.do_initiate_quick_open_session(),
             SpecialEvent::RequestQuickOpenCompletion(query) => self.do_request_quick_open_completions(query),
-            SpecialEvent::ShowQuickOpenCompletions => self.do_show_quick_open(),
             SpecialEvent::ToggleRecording(_) => {}
             SpecialEvent::PlayRecording(recording_name) => {
                 let recorder = self.recorder.borrow();
@@ -722,16 +721,10 @@ impl<'a> EventContext<'a> {
         if let Some(file_info) = self.info {
             let mut path = file_info.path.to_owned();
             path.pop();
-            eprintln!("quick open for query: {:?}", query);
             quick_open.initiate_fuzzy_match(&query);
+            let quick_open_results = quick_open.get_quick_open_results();
+            self.client.show_quick_open_results(self.view_id, &quick_open_results);
         }
-    }
-
-    // TODO: Forward completions back to client
-    fn do_show_quick_open(&self) {
-        let mut quick_open = self.quick_open.borrow_mut();
-        let quick_open_results = quick_open.get_quick_open_results();
-        self.client.show_quick_open_results(&quick_open_results);
     }
 
     /// Gives the requested position in UTF-8 offset format to be sent to plugin

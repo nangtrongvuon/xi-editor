@@ -92,7 +92,6 @@ pub(crate) enum SpecialEvent {
     ClearRecording(String),
     InitiateQuickOpenSession,
     RequestQuickOpenCompletion(String),
-    ShowQuickOpenCompletions,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -303,7 +302,6 @@ impl From<EditNotification> for EventDomain {
             CollapseSelections => ViewEvent::CollapseSelections.into(),
             InitiateQuickOpenSession => SpecialEvent::InitiateQuickOpenSession.into(),
             RequestQuickOpenCompletion { query } => SpecialEvent::RequestQuickOpenCompletion(query).into(),
-            ShowQuickOpenCompletions => SpecialEvent::ShowQuickOpenCompletions.into(),
         }
     }
 }

@@ -229,13 +229,14 @@ impl Client {
         )
     }
 
-    pub fn show_quick_open_results(&self, fuzzy_results: &[FuzzyResult]) {
+    pub fn show_quick_open_results(&self, view_id: ViewId, fuzzy_results: &[FuzzyResult]) {
         self.0.send_rpc_notification(
             "show_quick_open_completions",
             &json!({
+                "view_id": view_id,
                 "completions": fuzzy_results,
             }),
-        )
+        )   
     }
 
     pub fn schedule_idle(&self, token: usize) {

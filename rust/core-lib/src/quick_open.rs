@@ -56,7 +56,8 @@ impl QuickOpen {
 			.filter_map(|v| v.ok())
 			.for_each(|x| {
 					let path = x.into_path();
-					if !self.workspace_items.contains(&path) {
+					if !self.workspace_items.contains(&path) && 
+					path.extension().and_then(|p| p.to_str()).unwrap_or("") == "rs" {
 						self.workspace_items.push(path);
 					}
 				});
@@ -73,7 +74,10 @@ impl QuickOpen {
 		for item in &self.workspace_items {
 			if let Some(item_path_str) = item.to_str() {
 				let fuzzy_result = self.fuzzy_match(query, item_path_str);	
-				self.fuzzy_results.push(fuzzy_result);	
+
+				if fuzzy_result.score > 0 {
+					self.fuzzy_results.push(fuzzy_result);		
+				}
 			} 
 		}
 	}
