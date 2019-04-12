@@ -99,7 +99,7 @@ impl QuickOpen {
 	}
 
 	fn fuzzy_match(&self, pattern: &str, text: &str) -> FuzzyResult {
-		if pattern.len() == 0 {
+		if pattern.is_empty() {
 			return FuzzyResult { result_name: None, score: 0 }
 		}
 
@@ -120,7 +120,7 @@ impl QuickOpen {
 						start_index = i
 					}
 
-					p_index = p_index + 1;
+					p_index += 1;
 
 					if p_index == pattern_length {
 						end_index = i + 1;
@@ -131,14 +131,14 @@ impl QuickOpen {
 		}
 
 		if start_index > 0 && end_index > 0 {
-
+			p_index -= 1;
 			for i in (start_index..end_index - 1).rev() {
 				let second_text_index = text_length - i - 1;
 				let second_p_index = pattern_length - p_index - 1;	
 
 				if let (Some(current_char), Some(pattern_char)) = (text.chars().nth(second_text_index), pattern.chars().nth(second_p_index)) {
 					if current_char == pattern_char {
-						p_index = p_index - 1;
+						p_index -= 1;
 						if p_index == 0 {
 							start_index = i;
 							break
@@ -148,14 +148,14 @@ impl QuickOpen {
 			}
 
 			let score = self.calculate_score(pattern, text, start_index, end_index);
-			return FuzzyResult { result_name: Some(text.to_string()), score: score }
+			FuzzyResult { result_name: Some(text.to_string()), score }
 
 		} else {
 
 			// start_index = text_length - end_index;
 			// end_index = text_length - start_index;
 
-			return FuzzyResult { result_name: None, score: 0 }
+			FuzzyResult { result_name: None, score: 0 }
 		}
 	}
 
@@ -170,7 +170,7 @@ impl QuickOpen {
 		for i in start_index..end_index {
 			if let (Some(text_char), Some(pattern_char)) = (text.chars().nth(i), pattern.chars().nth(pattern_index)) {
 				if text_char == pattern_char {
-					score = score + SCORE_MATCH;
+					score += SCORE_MATCH;
 					let mut bonus = {
 						0
 					};
@@ -184,14 +184,14 @@ impl QuickOpen {
 					}
 
 					if pattern_index == 0 {
-						score = score + bonus * BONUS_FIRST_CHAR_MULTIPLIER;
+						score += bonus * BONUS_FIRST_CHAR_MULTIPLIER;
 					} else {
-						score = score + bonus;
+						score += bonus;
 					}
 
 					in_gap = false;
-					consecutive = consecutive + 1;
-					pattern_index = pattern_index + 1;
+					consecutive += 1;
+					pattern_index += 1;
 				} else {
 					if in_gap {
 						score = score + SCORE_GAP_EXTENSION;
@@ -205,7 +205,6 @@ impl QuickOpen {
 				}
 			}
 		}
-
-		return score
+		score
 	}
 }
