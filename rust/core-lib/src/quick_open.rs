@@ -1,6 +1,7 @@
 extern crate walkdir;
 
 use std::path::{Path, PathBuf};
+use std::collections::{HashMap};
 use std::cmp::{max};
 use walkdir::{DirEntry, WalkDir};
 
@@ -9,21 +10,31 @@ use walkdir::{DirEntry, WalkDir};
 // Idea: Quick open should save a tree hierarchy of the current opened file's root folder (considered the workspace folder)
 // Suggestions are pooled and given from a fuzzy finding structure
 // Suggestions are scored similarly to Sublime's own quick open.
-// Based heavily on FTS's fuzzy find code.
+// Based heavily on FTS's fuzzy find code and junegunn's fzf.
 
 const SCORE_MATCH: usize = 16;
 const SCORE_GAP_START: usize = 3;
 const SCORE_GAP_EXTENSION: usize = 1;
 
 const BONUS_BOUNDARY: usize = SCORE_MATCH / 2;
+const BONUS_SYMBOL: usize = SCORE_MATCH / 2;
 const BONUS_CAMEL: usize = BONUS_BOUNDARY + SCORE_GAP_EXTENSION;
 const BONUS_CONSECUTIVE: usize = SCORE_GAP_START + SCORE_GAP_EXTENSION;
 const BONUS_FIRST_CHAR_MULTIPLIER: usize = 2;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FuzzyResult {
-	result_name: Option<String>,
+	result_name: String,
 	score: usize
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub(crate) enum CharacterClass {
+	CharLower,
+	CharUpper,
+	CharLetter,
+	CharNumber,
+	CharSymbol
 }
 
 pub(crate) struct QuickOpen {
@@ -31,14 +42,14 @@ pub(crate) struct QuickOpen {
 	workspace_items: Vec<PathBuf>,
 
 	// Fuzzy find results, sorted descending by score.
-	fuzzy_results: Vec<FuzzyResult>,
+	fuzzy_results_map: HashMap<String, usize>,
 }
 
 impl QuickOpen {
 	pub fn new() -> QuickOpen {
 		QuickOpen {
 			workspace_items: Vec::new(),
-			fuzzy_results: Vec::new(),
+			fuzzy_results_map: HashMap::new(),
 		} 
 	}
 
@@ -63,22 +74,42 @@ impl QuickOpen {
 				});
 	}
 
-	// Returns a sorted by score list of fuzzy find results.
+	// Returns a list of fuzzy find results sorted by score.
 	pub(crate) fn get_quick_open_results(&mut self) -> Vec<FuzzyResult> {
-		let mut sorted_result = self.fuzzy_results.clone();
-		sorted_result.sort_by(|a, b| b.score.cmp(&a.score));
-		sorted_result
+		//TODO: Go through completions hashmap and convert to fuzzy results
+		let fuzzy_results_iter = self.fuzzy_results_map.drain();
+		let mut fuzzy_results = Vec::new();
+
+		for (result_name, score) in fuzzy_results_iter {
+			let new_result = FuzzyResult { result_name, score };
+			fuzzy_results.push(new_result);
+		}
+		
+		// Descending score
+		fuzzy_results.sort_by(|a, b| b.score.cmp(&a.score));
+		fuzzy_results
 	}
 
 	pub(crate) fn initiate_fuzzy_match(&mut self, query: &str) {
-		for item in &self.workspace_items {
-			if let Some(item_path_str) = item.to_str() {
-				let fuzzy_result = self.fuzzy_match(query, item_path_str);	
 
-				if fuzzy_result.score > 0 {
-					self.fuzzy_results.push(fuzzy_result);		
+		let mut average_score;
+		let mut total_score = 0;
+		let mut result_count = 0;
+
+		for item in &self.workspace_items {
+			if let Some(item_file_name) = item.file_name() {
+				let (result_name, score) = self.fuzzy_match(query, item_file_name.to_str().unwrap_or(""));	
+
+				result_count += 1;
+				total_score += score;
+				average_score = total_score / result_count;
+
+				if let Some(result_name) = result_name {	
+					if score > average_score {
+						self.fuzzy_results_map.insert(result_name, score);
+					}
 				}
-			} 
+			}
 		}
 	}
 
@@ -98,9 +129,9 @@ impl QuickOpen {
 		count == pattern.len()
 	}
 
-	fn fuzzy_match(&self, pattern: &str, text: &str) -> FuzzyResult {
+	fn fuzzy_match(&self, pattern: &str, text: &str) -> (Option<String>, usize) {
 		if pattern.is_empty() {
-			return FuzzyResult { result_name: None, score: 0 }
+			return (None, 0)
 		}
 
 		let mut p_index = 0;
@@ -148,14 +179,10 @@ impl QuickOpen {
 			}
 
 			let score = self.calculate_score(pattern, text, start_index, end_index);
-			FuzzyResult { result_name: Some(text.to_string()), score }
+			(Some(text.to_string()), score)
 
 		} else {
-
-			// start_index = text_length - end_index;
-			// end_index = text_length - start_index;
-
-			FuzzyResult { result_name: None, score: 0 }
+			(None, 0)
 		}
 	}
 
@@ -166,13 +193,22 @@ impl QuickOpen {
 		let mut in_gap = false;
 		let mut consecutive = 0;
 		let mut first_bonus = 0;
+		let mut prev_class = CharacterClass::CharSymbol;
+
+		if start_index > 0 {	
+			if let Some(prev_char) = text.chars().nth(start_index - 1) {
+				prev_class = self.get_char_class(&prev_char);	
+			}
+		}
 
 		for i in start_index..end_index {
 			if let (Some(text_char), Some(pattern_char)) = (text.chars().nth(i), pattern.chars().nth(pattern_index)) {
+				let current_class = self.get_char_class(&text_char);
+
 				if text_char == pattern_char {
 					score += SCORE_MATCH;
 					let mut bonus = {
-						0
+						self.calculate_bonus(prev_class, current_class)
 					};
 					if consecutive == 0 {
 						first_bonus = bonus;
@@ -207,4 +243,39 @@ impl QuickOpen {
 		}
 		score
 	}
+
+	fn get_char_class(&self, character: &char) -> CharacterClass {
+		if character.is_ascii_alphanumeric() {
+			if character.is_ascii_alphabetic() {
+				if character.is_ascii_lowercase() {
+					return CharacterClass::CharLower
+				} else {
+					return CharacterClass::CharUpper
+				}
+			} else {
+				return CharacterClass::CharNumber
+			}
+		} else {
+			return CharacterClass::CharSymbol
+		}
+	}
+
+	/// Calculates bonus for different character types.
+	fn calculate_bonus(&self, first_char_class: CharacterClass, second_char_class: CharacterClass) -> usize {
+		// Case: fuzzy_find, where "_" precedes "f"
+		if first_char_class == CharacterClass::CharSymbol && second_char_class != CharacterClass::CharSymbol {
+			return BONUS_BOUNDARY
+		} 
+		// Case: camelCase, letter123
+		else if first_char_class == CharacterClass::CharLower && second_char_class == CharacterClass::CharUpper || first_char_class != CharacterClass::CharNumber && second_char_class == CharacterClass::CharNumber {
+			return BONUS_CAMEL
+		} 
+		// Case: symbols
+		else if second_char_class == CharacterClass::CharSymbol {
+			return BONUS_SYMBOL
+		}
+
+		return 0
+	}
+
 }
