@@ -34,14 +34,13 @@ use crate::config::{BufferItems, Table};
 use crate::styles::ThemeStyleMap;
 use crate::quick_open::{QuickOpen};
 use crate::client::Client;
-use crate::config::{BufferItems, Table};
 use crate::edit_types::{EventDomain, SpecialEvent};
 use crate::editor::Editor;
 use crate::file::FileInfo;
 use crate::plugins::Plugin;
 use crate::recorder::Recorder;
 use crate::selection::InsertDrift;
-use crate::styles::ThemeStyleMap;
+
 use crate::syntax::LanguageId;
 use crate::tabs::{
     BufferId, PluginId, ViewId, FIND_VIEW_IDLE_MASK, RENDER_VIEW_IDLE_MASK, REWRAP_VIEW_IDLE_MASK,

@@ -32,7 +32,6 @@ pub struct FuzzyResult {
 pub(crate) enum CharacterClass {
 	CharLower,
 	CharUpper,
-	CharLetter,
 	CharNumber,
 	CharSymbol
 }
@@ -111,22 +110,6 @@ impl QuickOpen {
 				}
 			}
 		}
-	}
-
-	// Returns true if every char in pattern is found in text
-	fn fuzzy_match_simple(pattern: &str, text: &str) -> bool {
-		let mut count = 0;
-		let mut pattern_chars = pattern.chars();
-
-		for chr in text.chars() {
-			if let Some(str_char) = pattern_chars.next() {
-				if chr.to_lowercase().next() == str_char.to_lowercase().next() {
-					count += 1;
-				}
-			}
-		}
-		
-		count == pattern.len()
 	}
 
 	fn fuzzy_match(&self, pattern: &str, text: &str) -> (Option<String>, usize) {
@@ -262,6 +245,7 @@ impl QuickOpen {
 
 	/// Calculates bonus for different character types.
 	fn calculate_bonus(&self, first_char_class: CharacterClass, second_char_class: CharacterClass) -> usize {
+
 		// Case: fuzzy_find, where "_" precedes "f"
 		if first_char_class == CharacterClass::CharSymbol && second_char_class != CharacterClass::CharSymbol {
 			return BONUS_BOUNDARY
