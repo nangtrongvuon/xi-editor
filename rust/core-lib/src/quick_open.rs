@@ -97,16 +97,19 @@ impl QuickOpen {
 
 		for item in &self.workspace_items {
 			if let Some(item_file_name) = item.file_name() {
-				let (result_name, score) = self.fuzzy_match(query, item_file_name.to_str().unwrap_or(""));	
+				let (_, score) = self.fuzzy_match(query, item_file_name.to_str().unwrap_or(""));	
 
 				result_count += 1;
 				total_score += score;
 				average_score = total_score / result_count;
 
-				if let Some(result_name) = result_name {	
-					if score > average_score {
-						self.fuzzy_results_map.insert(result_name, score);
-					}
+				let item_path = match item.to_owned().into_os_string().into_string() {
+					Ok(full_path) => full_path,
+					Err(_) => continue
+				};
+
+				if score > average_score {
+					self.fuzzy_results_map.insert(item_path, score);
 				}
 			}
 		}
