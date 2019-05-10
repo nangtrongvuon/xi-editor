@@ -30,10 +30,10 @@ pub struct FuzzyResult {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum CharacterClass {
-	CharLower,
-	CharUpper,
-	CharNumber,
-	CharSymbol
+	Lower,
+	Upper,
+	Number,
+	Symbol
 }
 
 pub(crate) struct QuickOpen {
@@ -76,15 +76,13 @@ impl QuickOpen {
 	// Returns a list of fuzzy find results sorted by score.
 	pub(crate) fn get_quick_open_results(&mut self) -> Vec<FuzzyResult> {
 		//TODO: Go through completions hashmap and convert to fuzzy results
-		let fuzzy_results_iter = self.fuzzy_results_map.drain();
-		let mut fuzzy_results = Vec::new();
+		let mut fuzzy_results: Vec<FuzzyResult> = Vec::new();
 
-		for (result_name, score) in fuzzy_results_iter {
-			let new_result = FuzzyResult { result_name, score };
-			fuzzy_results.push(new_result);
+		for (result_name, score) in self.fuzzy_results_map.drain() {
+			fuzzy_results.push(FuzzyResult { result_name, score })
 		}
-		
-		// Descending score
+
+		// Sort by descending score
 		fuzzy_results.sort_by(|a, b| b.score.cmp(&a.score));
 		fuzzy_results
 	}
@@ -97,27 +95,28 @@ impl QuickOpen {
 
 		for item in &self.workspace_items {
 			if let Some(item_file_name) = item.file_name() {
-				let (_, score) = self.fuzzy_match(query, item_file_name.to_str().unwrap_or(""));	
+				let score = self.fuzzy_match(query, item_file_name.to_str().unwrap_or(""));	
 
 				result_count += 1;
 				total_score += score;
 				average_score = total_score / result_count;
 
-				let item_path = match item.to_owned().into_os_string().into_string() {
-					Ok(full_path) => full_path,
-					Err(_) => continue
+				match item.as_path().as_os_str().to_str() {
+					Some(full_path) => {
+						if score > average_score {
+							self.fuzzy_results_map.insert(full_path.to_string(), score);
+						}
+					},
+					None => continue
 				};
-
-				if score > average_score {
-					self.fuzzy_results_map.insert(item_path, score);
-				}
 			}
 		}
 	}
 
-	fn fuzzy_match(&self, pattern: &str, text: &str) -> (Option<String>, usize) {
+	// Returns a score based on how much alike `pattern` is to `text`.
+	fn fuzzy_match(&self, pattern: &str, text: &str) -> usize {
 		if pattern.is_empty() {
-			return (None, 0)
+			return 0
 		}
 
 		let mut p_index = 0;
@@ -165,10 +164,10 @@ impl QuickOpen {
 			}
 
 			let score = self.calculate_score(pattern, text, start_index, end_index);
-			(Some(text.to_string()), score)
+			return score
 
 		} else {
-			(None, 0)
+			return 0
 		}
 	}
 
@@ -179,7 +178,7 @@ impl QuickOpen {
 		let mut in_gap = false;
 		let mut consecutive = 0;
 		let mut first_bonus = 0;
-		let mut prev_class = CharacterClass::CharSymbol;
+		let mut prev_class = CharacterClass::Symbol;
 
 		if start_index > 0 {	
 			if let Some(prev_char) = text.chars().nth(start_index - 1) {
@@ -234,15 +233,15 @@ impl QuickOpen {
 		if character.is_ascii_alphanumeric() {
 			if character.is_ascii_alphabetic() {
 				if character.is_ascii_lowercase() {
-					return CharacterClass::CharLower
+					return CharacterClass::Lower
 				} else {
-					return CharacterClass::CharUpper
+					return CharacterClass::Upper
 				}
 			} else {
-				return CharacterClass::CharNumber
+				return CharacterClass::Number
 			}
 		} else {
-			return CharacterClass::CharSymbol
+			return CharacterClass::Symbol
 		}
 	}
 
@@ -250,15 +249,17 @@ impl QuickOpen {
 	fn calculate_bonus(&self, first_char_class: CharacterClass, second_char_class: CharacterClass) -> usize {
 
 		// Case: fuzzy_find, where "_" precedes "f"
-		if first_char_class == CharacterClass::CharSymbol && second_char_class != CharacterClass::CharSymbol {
+		if first_char_class == CharacterClass::Symbol && second_char_class != CharacterClass::Symbol {
 			return BONUS_BOUNDARY
 		} 
+
 		// Case: camelCase, letter123
-		else if first_char_class == CharacterClass::CharLower && second_char_class == CharacterClass::CharUpper || first_char_class != CharacterClass::CharNumber && second_char_class == CharacterClass::CharNumber {
+		else if first_char_class == CharacterClass::Lower && second_char_class == CharacterClass::Upper || first_char_class != CharacterClass::Number && second_char_class == CharacterClass::Number {
 			return BONUS_CAMEL
-		} 
+		}
+		 
 		// Case: symbols
-		else if second_char_class == CharacterClass::CharSymbol {
+		else if second_char_class == CharacterClass::Symbol {
 			return BONUS_SYMBOL
 		}
 
