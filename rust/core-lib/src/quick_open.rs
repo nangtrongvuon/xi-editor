@@ -8,7 +8,7 @@ use ignore::{Walk};
 // An instance of quick open
 
 // Idea: Quick open should save a tree hierarchy of the current opened file's root folder (considered the workspace folder)
-// Suggestions are pooled and given from a fuzzy finding structure
+// Suggestions are pooled and given from a fuzzy finding structure.
 // Suggestions are scored similarly to Sublime's own quick open.
 // Based heavily on FTS's fuzzy find code and junegunn's fzf.
 
@@ -37,6 +37,9 @@ pub(crate) enum CharacterClass {
 }
 
 pub(crate) struct QuickOpen {
+	// The current quick open root.
+	root: PathBuf,
+	
 	// All the items found in the workspace.
 	workspace_items: Vec<PathBuf>,
 
@@ -47,26 +50,49 @@ pub(crate) struct QuickOpen {
 impl QuickOpen {
 	pub fn new() -> QuickOpen {
 		QuickOpen {
+			root: PathBuf::new(),
 			workspace_items: Vec::new(),
 			fuzzy_results_map: HashMap::new(),
-		} 
+		}
 	}
 
 	pub(crate) fn initialize_workspace_matches(&mut self, folder: &Path) {
-		Walk::new(folder)
-			.into_iter()
-			.filter_map(|v| v.ok())
-			.for_each(|x| {
+		let mut parents = vec![];
+		
+		let mut new_root = folder.parent().unwrap_or(folder);
+
+		while let Some(parent) = new_root.parent() {
+			parents.push(parent);
+			new_root = parent;
+		}
+
+		// We're looking for a folder with ".git" in order to use it as our root path. 
+		// If none is found, the root is this folder's parent.
+		for parent in parents.into_iter() {
+			if parent.join(".git").exists() {
+				new_root = parent;
+				break
+			}
+		}
+		
+		if new_root != self.root {
+			self.root = new_root.to_owned();
+			Walk::new(self.root.as_path())
+				.into_iter()
+				.filter_map(|v| v.ok())
+				.for_each(|x| {
 					let path = x.into_path();
 					if !self.workspace_items.contains(&path) {
 						self.workspace_items.push(path);
 					}
-				});
+			});			
+		}
+
+		eprintln!("chosen root: {:?}", self.root);
 	}
 
 	// Returns a list of fuzzy find results sorted by score.
 	pub(crate) fn get_quick_open_results(&mut self) -> Vec<FuzzyResult> {
-		//TODO: Go through completions hashmap and convert to fuzzy results
 		let mut fuzzy_results: Vec<FuzzyResult> = Vec::new();
 
 		for (result_name, score) in self.fuzzy_results_map.drain() {
@@ -86,20 +112,24 @@ impl QuickOpen {
 
 		for item in &self.workspace_items {
 			if let Some(item_file_name) = item.file_name() {
-				let score = self.fuzzy_match(query, item_file_name.to_str().unwrap_or(""));	
+				let score = self.fuzzy_match(query, item_file_name.to_str().unwrap_or(""));
 
 				result_count += 1;
 				total_score += score;
 				average_score = total_score / result_count;
-
-				match item.as_path().as_os_str().to_str() {
-					Some(full_path) => {
-						if score > average_score {
-							self.fuzzy_results_map.insert(full_path.to_string(), score);
+				
+				match item.strip_prefix(&self.root) {
+					Ok(shortened_path) => {
+						if let Ok(path_string) = shortened_path.to_owned().into_os_string().into_string() {
+							if score > average_score {
+								self.fuzzy_results_map.insert(path_string, score);
+							}
 						}
-					},
-					None => continue
-				};
+					}
+					Err(e) => {
+						eprintln!("Encountered error {:?} while fuzzy matching the item {:?}", e, &item);
+					}
+				}
 			}
 		}
 	}
@@ -124,7 +154,7 @@ impl QuickOpen {
 			if let (Some(current_char), Some(pattern_char)) = (text.chars().nth(char_index), pattern.chars().nth(pattern_index)) {
 				if current_char == pattern_char {
 					if start_index == 0 {
-						start_index = i
+						start_index = i;
 					}
 
 					p_index += 1;
@@ -141,7 +171,7 @@ impl QuickOpen {
 			p_index -= 1;
 			for i in (start_index..end_index - 1).rev() {
 				let second_text_index = text_length - i - 1;
-				let second_p_index = pattern_length - p_index - 1;	
+				let second_p_index = pattern_length - p_index - 1;
 
 				if let (Some(current_char), Some(pattern_char)) = (text.chars().nth(second_text_index), pattern.chars().nth(second_p_index)) {
 					if current_char == pattern_char {
@@ -171,9 +201,9 @@ impl QuickOpen {
 		let mut first_bonus = 0;
 		let mut prev_class = CharacterClass::Symbol;
 
-		if start_index > 0 {	
+		if start_index > 0 {
 			if let Some(prev_char) = text.chars().nth(start_index - 1) {
-				prev_class = self.get_char_class(&prev_char);	
+				prev_class = self.get_char_class(&prev_char);
 			}
 		}
 
@@ -242,13 +272,13 @@ impl QuickOpen {
 		// Case: fuzzy_find, where "_" precedes "f"
 		if first_char_class == CharacterClass::Symbol && second_char_class != CharacterClass::Symbol {
 			return BONUS_BOUNDARY
-		} 
+		}
 
 		// Case: camelCase, letter123
 		else if first_char_class == CharacterClass::Lower && second_char_class == CharacterClass::Upper || first_char_class != CharacterClass::Number && second_char_class == CharacterClass::Number {
 			return BONUS_CAMEL
 		}
-		 
+
 		// Case: symbols
 		else if second_char_class == CharacterClass::Symbol {
 			return BONUS_SYMBOL
