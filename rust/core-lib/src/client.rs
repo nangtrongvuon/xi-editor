@@ -15,6 +15,7 @@
 //! Requests and notifications from the core to front-ends.
 
 use std::time::Instant;
+use std::path::Path;
 
 use serde_json::{self, Value};
 use xi_rpc::{self, RpcPeer};
@@ -227,6 +228,16 @@ impl Client {
                 "result": result,
             }),
         )
+    }
+
+    pub fn set_quick_open_root(&self, view_id: ViewId, quick_open_root: &Path) {
+        self.0.send_rpc_notification(
+            "set_quick_open_root",
+            &json!({
+                "view_id": view_id,
+                "root": quick_open_root,
+            }),
+        )   
     }
 
     pub fn show_quick_open_results(&self, view_id: ViewId, fuzzy_results: &[FuzzyResult]) {

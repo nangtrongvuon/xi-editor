@@ -709,8 +709,8 @@ impl<'a> EventContext<'a> {
         if let Some(file_info) = self.info {
             let mut path = file_info.path.to_owned();
             path.pop();
-            eprintln!("initiated quick open in path: {:?}", &path);
-            quick_open.initialize_workspace_matches(&path);
+            let quick_open_root = quick_open.initialize_workspace_matches(&path);
+            self.client.set_quick_open_root(self.view_id, &quick_open_root)
         }
     }
 
