@@ -12,9 +12,9 @@ use std::path::{Path, PathBuf};
 // Suggestions are scored similarly to Sublime's own quick open.
 // Based heavily on FTS's fuzzy find code and junegunn's fzf.
 
-const SCORE_MATCH: usize = 16;
-const SCORE_GAP_START: usize = 3;
-const SCORE_GAP_EXTENSION: usize = 1;
+const SCORE_MATCH: usize = 30;
+const SCORE_GAP_START: usize = 15;
+const SCORE_GAP_EXTENSION: usize = 10;
 
 const BONUS_BOUNDARY: usize = SCORE_MATCH / 2;
 const BONUS_SYMBOL: usize = SCORE_MATCH / 2;
@@ -27,7 +27,8 @@ pub struct FuzzyResult {
     result_name: String,
     score: usize,
     // The start and end indices of the result's match.
-    match_indices: (usize, usize),
+    match_start: usize,
+    match_end: usize,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -98,7 +99,8 @@ impl QuickOpen {
             fuzzy_results.push(FuzzyResult {
                 result_name,
                 score,
-                match_indices: (start_index, end_index),
+                match_start: start_index,
+                match_end: end_index
             })
         }
 
@@ -127,9 +129,10 @@ impl QuickOpen {
                             shortened_path.to_owned().into_os_string().into_string()
                         {
                             if score >= average_score {
+                                eprintln!("{:?}, {:?}", start_index, end_index);
                                 self.fuzzy_results_map
                                     .insert(path_string, (score, start_index, end_index));
-                            }
+                            }   
                         }
                     }
                     Err(e) => {
@@ -235,7 +238,7 @@ impl QuickOpen {
 
                 if text_char == pattern_char {
                     score += SCORE_MATCH;
-                    let mut bonus = { self.calculate_bonus(prev_class, current_class) };
+                    let mut bonus = self.calculate_bonus(prev_class, current_class);
 
                     if consecutive == 0 {
                         first_bonus = bonus;
