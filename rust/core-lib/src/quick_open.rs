@@ -1,8 +1,6 @@
 extern crate ignore;
 
 use ignore::Walk;
-use std::cmp::max;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 // An instance of quick open
@@ -12,42 +10,40 @@ use std::path::{Path, PathBuf};
 // Suggestions are scored similarly to Sublime's own quick open.
 // Based heavily on FTS's fuzzy find code and junegunn's fzf.
 
-const SCORE_MATCH: usize = 30;
-const SCORE_GAP_START: usize = 15;
-const SCORE_GAP_EXTENSION: usize = 10;
+// Prevents degenerate cases where matches are too long.
+const MATCH_LIMIT: usize = 100;
+const RECURSION_LIMIT: usize = 10;
 
-const BONUS_BOUNDARY: usize = SCORE_MATCH / 2;
-const BONUS_SYMBOL: usize = SCORE_MATCH / 2;
-const BONUS_CAMEL: usize = BONUS_BOUNDARY + SCORE_GAP_EXTENSION;
-const BONUS_CONSECUTIVE: usize = SCORE_GAP_START + SCORE_GAP_EXTENSION;
-const BONUS_FIRST_CHAR_MULTIPLIER: usize = 2;
+const SEQUENTIAL_BONUS: usize = 16; // Bonus for adjacent matches
+const SEPARATOR_BONUS: usize = 16; // Bonus for adjacent matches
+const CAMELCASE_BONUS: usize = 16; // Bonus for adjacent matches
+const FIRST_LETTER_BONUS: usize = 16; // Bonus for adjacent matches
+
+const LEADING_LETTER_PENALTY: usize = 5; // Bonus for adjacent matches
+const MAX_LEADING_LETTER_PENALTY: usize = 15; // Bonus for adjacent matches
+const UNMATCHED_LETTER_PENALTY: usize = 1; // Bonus for adjacent matches
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FuzzyResult {
     result_name: String,
     score: usize,
-    // The start and end indices of the result's match.
-    match_start: usize,
-    match_end: usize,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub(crate) enum CharacterClass {
-    Lower,
-    Upper,
-    Number,
-    Symbol,
+    // All matching indices.
+    match_indices: Vec<usize>,
 }
 
 pub(crate) struct QuickOpen {
     // The current quick open root.
     root: PathBuf,
-
     // All the items found in the workspace.
     workspace_items: Vec<PathBuf>,
-
     // Fuzzy find results, sorted descending by score.
-    fuzzy_results_map: HashMap<String, (usize, usize, usize)>,
+    current_fuzzy_results: Vec<FuzzyResult>,
+}
+
+impl PartialEq for FuzzyResult {
+    fn eq(&self, other: &Self) -> bool {
+        self.result_name == other.result_name
+    }
 }
 
 impl QuickOpen {
@@ -55,7 +51,7 @@ impl QuickOpen {
         QuickOpen {
             root: PathBuf::new(),
             workspace_items: Vec::new(),
-            fuzzy_results_map: HashMap::new(),
+            current_fuzzy_results: Vec::new(),
         }
     }
 
@@ -78,61 +74,57 @@ impl QuickOpen {
         }
 
         if new_root != self.root {
+            self.workspace_items.clear();
             self.root = new_root.to_owned();
             Walk::new(self.root.as_path()).filter_map(|v| v.ok()).for_each(|x| {
                 let path = x.into_path();
-                if !self.workspace_items.contains(&path) {
+                if !self.workspace_items.contains(&path) && path.is_file() {
                     self.workspace_items.push(path);
                 }
             });
         }
         // TODO: remove when PRing
+        eprintln!("Workspace items: {:?}", self.workspace_items);
         eprintln!("chosen root: {:?}", self.root);
         self.root.as_path()
     }
 
     // Returns a list of fuzzy find results sorted by score.
-    pub(crate) fn get_quick_open_results(&mut self) -> Vec<FuzzyResult> {
-        let mut fuzzy_results: Vec<FuzzyResult> = Vec::new();
-
-        for (result_name, (score, start_index, end_index)) in self.fuzzy_results_map.drain() {
-            fuzzy_results.push(FuzzyResult {
-                result_name,
-                score,
-                match_start: start_index,
-                match_end: end_index
-            })
-        }
-
-        // Sort by descending score
-        fuzzy_results.sort_by(|a, b| b.score.cmp(&a.score));
-        fuzzy_results
+    pub(crate) fn get_quick_open_results(&mut self) -> &Vec<FuzzyResult> {
+        self.current_fuzzy_results.sort_by(|a, b| b.score.cmp(&a.score));
+        // self.current_fuzzy_results.dedup();
+        return &self.current_fuzzy_results;
     }
 
+    // Initiates a new fuzzy match session.
     pub(crate) fn initiate_fuzzy_match(&mut self, query: &str) {
-        let mut average_score;
-        let mut total_score = 0;
-        let mut result_count = 0;
-
+        self.current_fuzzy_results.clear();
         for item in &self.workspace_items {
-            if let Some(item_file_name) = item.file_name() {
-                let (score, start_index, end_index) =
-                    self.fuzzy_match(query, item_file_name.to_str().unwrap_or(""));
+            if let Some(item_name) =
+                item.file_name().map(|file_name| file_name.to_str().unwrap_or_default())
+            {
+                let (result_indices, result_score) =
+                    self.fuzzy_match(query, item_name, None, Vec::new(), 0, 0, 0, 0);
 
-                result_count += 1;
-                total_score += score;
-                average_score = total_score / result_count;
+                if result_indices.is_empty() {
+                    continue;
+                }
 
                 match item.strip_prefix(&self.root) {
                     Ok(shortened_path) => {
                         if let Ok(path_string) =
                             shortened_path.to_owned().into_os_string().into_string()
                         {
-                            if score >= average_score {
-                                eprintln!("{:?}, {:?}", start_index, end_index);
-                                self.fuzzy_results_map
-                                    .insert(path_string, (score, start_index, end_index));
-                            }   
+                            // Shorten path here
+                            let fuzzy_result = FuzzyResult {
+                                result_name: path_string,
+                                score: result_score,
+                                match_indices: result_indices,
+                            };
+
+                            if !self.current_fuzzy_results.contains(&fuzzy_result) {
+                                self.current_fuzzy_results.push(fuzzy_result);
+                            }
                         }
                     }
                     Err(e) => {
@@ -146,174 +138,153 @@ impl QuickOpen {
         }
     }
 
-    // Returns a score based on how much alike `pattern` is to `text`, along with their match indices.
-    fn fuzzy_match(&self, pattern: &str, text: &str) -> (usize, usize, usize) {
-        if pattern.is_empty() {
-            return (0, 0, 0);
-        }
-
-        let mut p_index = 0;
-        let mut start_index = 0;
-        let mut end_index = 0;
-
-        let pattern_length = pattern.len();
-        let text_length = text.len();
-
-        for i in 0..text_length {
-            let char_index = text_length - i - 1;
-            let pattern_index = pattern_length - p_index - 1;
-
-            if let (Some(current_char), Some(pattern_char)) =
-                (text.chars().nth(char_index), pattern.chars().nth(pattern_index))
-            {
-                if current_char == pattern_char {
-                    if start_index == 0 {
-                        start_index = i;
-                    }
-
-                    p_index += 1;
-
-                    if p_index == pattern_length {
-                        end_index = i + 1;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if start_index > 0 && end_index > 0 {
-            p_index -= 1;
-            for i in (start_index..end_index - 1).rev() {
-                let second_text_index = text_length - i - 1;
-                let second_p_index = pattern_length - p_index - 1;
-
-                if let (Some(current_char), Some(pattern_char)) =
-                    (text.chars().nth(second_text_index), pattern.chars().nth(second_p_index))
-                {
-                    if current_char == pattern_char {
-                        p_index -= 1;
-                        if p_index == 0 {
-                            start_index = i;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            let score = self.calculate_score(pattern, text, start_index, end_index);
-            return (score, start_index, end_index);
-        } else {
-            (0, 0, 0)
-        }
-    }
-
-    fn calculate_score(
+    // Calculates how much alike `pattern` is to `text`, along with their match indices.
+    // Algorithm ripped straight from FTS's fuzzy find blog post.
+    // Returns a tuple containing if a match was found, and how much score is that match worth.
+    fn fuzzy_match(
         &self,
         pattern: &str,
         text: &str,
-        start_index: usize,
-        end_index: usize,
-    ) -> usize {
-        let mut pattern_index = 0;
-        let mut score = 0;
-        let mut in_gap = false;
-        let mut consecutive = 0;
-        let mut first_bonus = 0;
-        let mut prev_class = CharacterClass::Symbol;
+        original_match_indices: Option<&Vec<usize>>,
+        mut match_indices: Vec<usize>,
+        mut pattern_current_idx: usize,
+        mut text_current_idx: usize,
+        mut matched_count: usize,
+        mut recursion_count: usize,
+    ) -> (Vec<usize>, usize) {
+        let mut pattern_characters = pattern.chars();
+        let mut text_characters = text.chars();
 
-        let mut text_chars = text.chars();
-        let mut pattern_chars = pattern.chars();
+        eprintln!("Matching {:?} against {:?} with current recursion_count: {:?}", pattern, text, recursion_count);
 
-        if start_index > 0 {
-            if let Some(prev_char) = text_chars.nth(start_index - 1) {
-                prev_class = self.get_char_class(prev_char);
-            }
+        // Base case: pattern is empty
+        recursion_count += 1;
+        if recursion_count >= RECURSION_LIMIT || pattern.is_empty() {
+            return (vec![], 0);
         }
 
-        for i in start_index..end_index {
-            if let (Some(text_char), Some(pattern_char)) =
-                (text_chars.nth(i), pattern_chars.nth(pattern_index))
-            {
-                let current_class = self.get_char_class(text_char);
+        let mut score: usize = 0;
+        let mut best_recursive_score: usize = 0;
+        let mut best_recursive_match_indices: Vec<usize> = Vec::new();
+        let mut first_match = true;
+        let mut recursive_matched = false;
 
-                if text_char == pattern_char {
-                    score += SCORE_MATCH;
-                    let mut bonus = self.calculate_bonus(prev_class, current_class);
-
-                    if consecutive == 0 {
-                        first_bonus = bonus;
-                    } else {
-                        if bonus == BONUS_BOUNDARY {
-                            first_bonus = bonus;
-                        }
-                        bonus = max(max(bonus, first_bonus), BONUS_CONSECUTIVE);
-                    }
-
-                    if pattern_index == 0 {
-                        score += bonus * BONUS_FIRST_CHAR_MULTIPLIER;
-                    } else {
-                        score += bonus;
-                    }
-
-                    in_gap = false;
-                    consecutive += 1;
-                    pattern_index += 1;
-                } else {
-                    if in_gap {
-                        score += SCORE_GAP_EXTENSION;
-                    } else {
-                        score += SCORE_GAP_START;
-                    }
-
-                    in_gap = true;
-                    consecutive = 0;
-                    first_bonus = 0;
+        while let (Some(pat_char), Some(text_char)) =
+            (pattern_characters.next(), text_characters.next())
+        {
+            if pat_char.to_ascii_lowercase() == text_char.to_ascii_lowercase() {
+                if matched_count >= MATCH_LIMIT {
+                    return (vec![], 0);
                 }
+
+                if first_match {
+                    if let Some(original_match_indices) = original_match_indices {
+                        // eprintln!("Copying first match");
+                        match_indices = original_match_indices[0..matched_count].to_vec();
+                        first_match = false;
+                    }
+                }
+
+                let recursive_matches: Vec<usize> = Vec::new();
+
+                let (recursive_match_indices, recursive_score) = self.fuzzy_match(
+                    pattern,
+                    &text[1..],
+                    Some(&match_indices),
+                    recursive_matches,
+                    pattern_current_idx,
+                    text_current_idx + 1,
+                    matched_count,
+                    recursion_count,
+                );
+
+                if recursive_score > best_recursive_score {
+                    best_recursive_match_indices = recursive_match_indices;
+                    best_recursive_score = recursive_score;
+                    recursive_matched = true;
+                }
+
+                match_indices.push(text_current_idx);
+                matched_count += 1;
+                pattern_current_idx += 1;
             }
+            text_current_idx += 1;
         }
-        score
+
+        let matched = pattern_current_idx == pattern.len();
+
+        if matched {
+            score = self.calculate_score(text, matched_count, &match_indices);
+        }
+
+        // If an answer from a further recursion is better
+        if recursive_matched && (!matched || best_recursive_score > score) {
+            // eprintln!("Copying recursive match");
+            match_indices = best_recursive_match_indices;
+            score = best_recursive_score;
+            return (match_indices, score);
+        } else if matched {
+            return (match_indices, score);
+        } else {
+            return (vec![], 0);
+        }
     }
 
-    fn get_char_class(&self, character: char) -> CharacterClass {
-        if character.is_ascii_alphanumeric() {
-            if character.is_ascii_alphabetic() {
-                if character.is_ascii_lowercase() {
-                    CharacterClass::Lower
-                } else {
-                    CharacterClass::Upper
+    // Calculate a score, given a list of matched indices and the original text that matched.
+    fn calculate_score(
+        &self,
+        text: &str,
+        matched_count: usize,
+        match_indices: &Vec<usize>,
+    ) -> usize {
+        // eprintln!("Calculating score");
+
+        // Starting score
+        let mut score: usize = 100;
+
+        // Check if match didn't start from the first letter
+        let mut penalty = LEADING_LETTER_PENALTY * match_indices[0];
+        if penalty > MAX_LEADING_LETTER_PENALTY {
+            penalty = MAX_LEADING_LETTER_PENALTY;
+        }
+        score = score.saturating_sub(penalty);
+
+        // Apply penalty for non-matches
+        let unmatched_penalty = match_indices[0] * UNMATCHED_LETTER_PENALTY;
+        score = score.saturating_sub(unmatched_penalty);
+
+        let mut previous_match_index: usize = 0;
+        for i in 0..matched_count {
+            let current_match_index = match_indices[i];
+
+            if i > 0 {
+                previous_match_index = match_indices[i - 1];
+            }
+
+            // Check for sequential matches
+            if current_match_index == (previous_match_index + 1) {
+                score += SEQUENTIAL_BONUS;
+            }
+
+            if current_match_index > 0 {
+                match (
+                    text.chars().nth(current_match_index - 1),
+                    text.chars().nth(current_match_index),
+                ) {
+                    (Some(neighbour), Some(current_char)) => {
+                        if neighbour.is_lowercase() && current_char.is_uppercase() {
+                            score += CAMELCASE_BONUS;
+                        }
+                        if neighbour.to_string() == "_" || neighbour.to_string() == "-" {
+                            score += SEPARATOR_BONUS;
+                        }
+                    }
+                    _ => break,
                 }
             } else {
-                CharacterClass::Number
+                score += FIRST_LETTER_BONUS;
             }
-        } else {
-            CharacterClass::Symbol
         }
-    }
-
-    /// Calculates bonus for different character types.
-    fn calculate_bonus(
-        &self,
-        first_char_class: CharacterClass,
-        second_char_class: CharacterClass,
-    ) -> usize {
-        // Case: fuzzy_find, where "_" precedes "f"
-        if first_char_class == CharacterClass::Symbol && second_char_class != CharacterClass::Symbol
-        {
-            return BONUS_BOUNDARY;
-        }
-        // Case: camelCase, letter123
-        else if first_char_class == CharacterClass::Lower
-            && second_char_class == CharacterClass::Upper
-            || first_char_class != CharacterClass::Number
-                && second_char_class == CharacterClass::Number
-        {
-            return BONUS_CAMEL;
-        }
-        // Case: symbols
-        else if second_char_class == CharacterClass::Symbol {
-            return BONUS_SYMBOL;
-        }
-        // No bonus for remaining cases
-        0
+        return score;
     }
 }

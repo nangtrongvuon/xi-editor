@@ -722,7 +722,7 @@ impl<'a> EventContext<'a> {
             path.pop();
             quick_open.initiate_fuzzy_match(&query);
             let quick_open_results = quick_open.get_quick_open_results();
-            self.client.show_quick_open_results(self.view_id, &quick_open_results);
+            self.client.show_quick_open_results(self.view_id, quick_open_results);
         }
     }
 
