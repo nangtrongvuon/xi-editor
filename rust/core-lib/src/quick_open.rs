@@ -1,6 +1,8 @@
 extern crate ignore;
 
 use ignore::Walk;
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 // An instance of quick open
@@ -9,6 +11,8 @@ use std::path::{Path, PathBuf};
 // Suggestions are pooled and given from a fuzzy finding structure.
 // Suggestions are scored similarly to Sublime's own quick open.
 // Based heavily on FTS's fuzzy find code and junegunn's fzf.
+
+const NUL_BYTE: u8 = b'\x00';
 
 // Prevents degenerate cases where matches are too long.
 const MATCH_LIMIT: usize = 100;
@@ -56,17 +60,44 @@ impl QuickOpen {
     }
 
     pub(crate) fn initialize_workspace_matches(&mut self, folder: &Path) -> &Path {
+        // Helper function to determine if a file at a path is a possible valid match.
+        // Conditions:
+        // 1. The path must point to a file (and not a folder)
+        // 2. The file is not binary
+        fn is_possible_match(file_path: &Path) -> bool {
+            if file_path.is_dir() {
+                return false
+            }
+
+            let open_file = File::open(file_path);
+
+            match open_file {
+                Ok(file) => {
+                    let binary_found = file.bytes().find(|x| x.as_ref().unwrap() == &NUL_BYTE);
+                    return !binary_found.is_some();
+                }
+                Err(e) => {
+                    eprintln!("Encountered error: {}", e);
+                    return false;
+                }
+            }
+        }
+
         let mut parents = vec![];
         let mut new_root = folder.parent().unwrap_or(folder);
+
+        parents.push(new_root);
 
         while let Some(parent) = new_root.parent() {
             parents.push(parent);
             new_root = parent;
         }
 
+        eprintln!("Parents: {:?}", parents);
+
         // We're looking for a folder with ".git" in order to use it as our root path.
         // If none is found, the root is this folder's parent.
-        for parent in parents.into_iter() {
+        for parent in parents.into_iter().rev() {
             if parent.join(".git").exists() {
                 new_root = parent;
                 break;
@@ -78,13 +109,11 @@ impl QuickOpen {
             self.root = new_root.to_owned();
             Walk::new(self.root.as_path()).filter_map(|v| v.ok()).for_each(|x| {
                 let path = x.into_path();
-                if !self.workspace_items.contains(&path) && path.is_file() {
+                if !self.workspace_items.contains(&path) && is_possible_match(&path) {
                     self.workspace_items.push(path);
                 }
             });
         }
-        // TODO: remove when PRing
-        eprintln!("Workspace items: {:?}", self.workspace_items);
         eprintln!("chosen root: {:?}", self.root);
         self.root.as_path()
     }
@@ -92,7 +121,6 @@ impl QuickOpen {
     // Returns a list of fuzzy find results sorted by score.
     pub(crate) fn get_quick_open_results(&mut self) -> &Vec<FuzzyResult> {
         self.current_fuzzy_results.sort_by(|a, b| b.score.cmp(&a.score));
-        // self.current_fuzzy_results.dedup();
         return &self.current_fuzzy_results;
     }
 
@@ -144,7 +172,7 @@ impl QuickOpen {
     fn fuzzy_match(
         &self,
         pattern: &str,
-        text: &str,
+        mut text: &str,
         original_match_indices: Option<&Vec<usize>>,
         mut match_indices: Vec<usize>,
         mut pattern_current_idx: usize,
@@ -152,14 +180,9 @@ impl QuickOpen {
         mut matched_count: usize,
         mut recursion_count: usize,
     ) -> (Vec<usize>, usize) {
-        let mut pattern_characters = pattern.chars();
-        let mut text_characters = text.chars();
-
-        eprintln!("Matching {:?} against {:?} with current recursion_count: {:?}", pattern, text, recursion_count);
-
         // Base case: pattern is empty
         recursion_count += 1;
-        if recursion_count >= RECURSION_LIMIT || pattern.is_empty() {
+        if recursion_count >= RECURSION_LIMIT || pattern.is_empty() || text.is_empty() {
             return (vec![], 0);
         }
 
@@ -169,9 +192,21 @@ impl QuickOpen {
         let mut first_match = true;
         let mut recursive_matched = false;
 
-        while let (Some(pat_char), Some(text_char)) =
-            (pattern_characters.next(), text_characters.next())
-        {
+        let mut pattern_chars = pattern.chars();
+        let mut text_chars = text.chars();
+
+        let mut pat_char =
+            pattern_chars.next().expect("Pattern should at least have one character");
+
+        eprintln!("Comparing {:?} against {:?}", pattern, text);
+
+        while let Some(text_char) = text_chars.next() {
+            // Recursions went through all chars in `text`, so stop.
+            if text_current_idx > text.len() && pattern_current_idx > pattern.len() { 
+                eprintln!("Text len: {}, text idx: {}", text.len(), text_current_idx);
+                break
+            }
+
             if pat_char.to_ascii_lowercase() == text_char.to_ascii_lowercase() {
                 if matched_count >= MATCH_LIMIT {
                     return (vec![], 0);
@@ -179,7 +214,6 @@ impl QuickOpen {
 
                 if first_match {
                     if let Some(original_match_indices) = original_match_indices {
-                        // eprintln!("Copying first match");
                         match_indices = original_match_indices[0..matched_count].to_vec();
                         first_match = false;
                     }
@@ -187,13 +221,15 @@ impl QuickOpen {
 
                 let recursive_matches: Vec<usize> = Vec::new();
 
+                text = &text[1..];
+
                 let (recursive_match_indices, recursive_score) = self.fuzzy_match(
                     pattern,
-                    &text[1..],
+                    text,
                     Some(&match_indices),
                     recursive_matches,
                     pattern_current_idx,
-                    text_current_idx + 1,
+                    text_current_idx,
                     matched_count,
                     recursion_count,
                 );
@@ -204,14 +240,21 @@ impl QuickOpen {
                     recursive_matched = true;
                 }
 
+                eprintln!("Text current index: {:?}", text_current_idx);
                 match_indices.push(text_current_idx);
                 matched_count += 1;
+
+                if let Some(next_pat_char) = pattern_chars.next() {
+                    pat_char = next_pat_char;
+                } else {
+                    break;
+                }
                 pattern_current_idx += 1;
             }
             text_current_idx += 1;
         }
 
-        let matched = pattern_current_idx == pattern.len();
+        let matched = !match_indices.is_empty();
 
         if matched {
             score = self.calculate_score(text, matched_count, &match_indices);
@@ -219,7 +262,6 @@ impl QuickOpen {
 
         // If an answer from a further recursion is better
         if recursive_matched && (!matched || best_recursive_score > score) {
-            // eprintln!("Copying recursive match");
             match_indices = best_recursive_match_indices;
             score = best_recursive_score;
             return (match_indices, score);
@@ -237,8 +279,6 @@ impl QuickOpen {
         matched_count: usize,
         match_indices: &Vec<usize>,
     ) -> usize {
-        // eprintln!("Calculating score");
-
         // Starting score
         let mut score: usize = 100;
 

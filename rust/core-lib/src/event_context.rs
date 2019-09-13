@@ -705,7 +705,6 @@ impl<'a> EventContext<'a> {
 
     fn do_initiate_quick_open_session(&self) {
         let mut quick_open = self.quick_open.borrow_mut();
-        eprintln!("quick open called");
         if let Some(file_info) = self.info {
             let mut path = file_info.path.to_owned();
             path.pop();
