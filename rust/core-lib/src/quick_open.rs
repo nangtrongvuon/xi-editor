@@ -93,11 +93,9 @@ impl QuickOpen {
             new_root = parent;
         }
 
-        eprintln!("Parents: {:?}", parents);
-
         // We're looking for a folder with ".git" in order to use it as our root path.
-        // If none is found, the root is this folder's parent.
-        for parent in parents.into_iter().rev() {
+        // If none is found, the root is this f older's parent.
+        for parent in parents.into_iter() {
             if parent.join(".git").exists() {
                 new_root = parent;
                 break;
@@ -114,7 +112,6 @@ impl QuickOpen {
                 }
             });
         }
-        eprintln!("chosen root: {:?}", self.root);
         self.root.as_path()
     }
 
@@ -172,7 +169,7 @@ impl QuickOpen {
     fn fuzzy_match(
         &self,
         pattern: &str,
-        mut text: &str,
+        text: &str,
         original_match_indices: Option<&Vec<usize>>,
         mut match_indices: Vec<usize>,
         mut pattern_current_idx: usize,
@@ -186,24 +183,29 @@ impl QuickOpen {
             return (vec![], 0);
         }
 
+        if text_current_idx >= text.len() || pattern_current_idx >= pattern.len() {
+            return (vec![], 0);
+        }
+
         let mut score: usize = 0;
         let mut best_recursive_score: usize = 0;
         let mut best_recursive_match_indices: Vec<usize> = Vec::new();
         let mut first_match = true;
         let mut recursive_matched = false;
 
-        let mut pattern_chars = pattern.chars();
-        let mut text_chars = text.chars();
+        let shortened_pattern = &pattern[pattern_current_idx..];
+        let shortened_text = &text[text_current_idx..];
+
+        let mut pattern_chars = shortened_pattern.chars();
+        let mut text_chars = shortened_text.chars();
 
         let mut pat_char =
             pattern_chars.next().expect("Pattern should at least have one character");
 
-        eprintln!("Comparing {:?} against {:?}", pattern, text);
-
+        eprintln!("Comparing {} with {}", pattern, shortened_text);
         while let Some(text_char) = text_chars.next() {
             // Recursions went through all chars in `text`, so stop.
-            if text_current_idx > text.len() && pattern_current_idx > pattern.len() { 
-                eprintln!("Text len: {}, text idx: {}", text.len(), text_current_idx);
+            if text_current_idx >= text.len() && pattern_current_idx >= pattern.len() { 
                 break
             }
 
@@ -221,15 +223,13 @@ impl QuickOpen {
 
                 let recursive_matches: Vec<usize> = Vec::new();
 
-                text = &text[1..];
-
                 let (recursive_match_indices, recursive_score) = self.fuzzy_match(
                     pattern,
                     text,
                     Some(&match_indices),
                     recursive_matches,
                     pattern_current_idx,
-                    text_current_idx,
+                    text_current_idx + 1,
                     matched_count,
                     recursion_count,
                 );
@@ -240,12 +240,12 @@ impl QuickOpen {
                     recursive_matched = true;
                 }
 
-                eprintln!("Text current index: {:?}", text_current_idx);
                 match_indices.push(text_current_idx);
                 matched_count += 1;
 
                 if let Some(next_pat_char) = pattern_chars.next() {
                     pat_char = next_pat_char;
+                    
                 } else {
                     break;
                 }
@@ -293,6 +293,8 @@ impl QuickOpen {
         let unmatched_penalty = match_indices[0] * UNMATCHED_LETTER_PENALTY;
         score = score.saturating_sub(unmatched_penalty);
 
+        let text_chars: Vec<char> = text.chars().collect();
+
         let mut previous_match_index: usize = 0;
         for i in 0..matched_count {
             let current_match_index = match_indices[i];
@@ -307,20 +309,17 @@ impl QuickOpen {
             }
 
             if current_match_index > 0 {
-                match (
-                    text.chars().nth(current_match_index - 1),
-                    text.chars().nth(current_match_index),
-                ) {
-                    (Some(neighbour), Some(current_char)) => {
-                        if neighbour.is_lowercase() && current_char.is_uppercase() {
-                            score += CAMELCASE_BONUS;
-                        }
-                        if neighbour.to_string() == "_" || neighbour.to_string() == "-" {
-                            score += SEPARATOR_BONUS;
-                        }
-                    }
-                    _ => break,
+                let neighbour = text_chars[current_match_index - 1];
+                let current_char = text_chars[current_match_index];
+
+                if neighbour.is_lowercase() && current_char.is_uppercase() {
+                    score += CAMELCASE_BONUS;
                 }
+
+                if neighbour.to_string() == "_" || neighbour.to_string() == "-" {
+                    score += SEPARATOR_BONUS;
+                }
+
             } else {
                 score += FIRST_LETTER_BONUS;
             }
