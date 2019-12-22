@@ -73,12 +73,12 @@ impl QuickOpen {
 
             match open_file {
                 Ok(file) => {
-                    let binary_found = file.bytes().find(|x| x.as_ref().unwrap() == &NUL_BYTE);
-                    return !binary_found.is_some();
+                    let binary_mark = file.bytes().find(|x| x.as_ref().unwrap() == &NUL_BYTE);
+                    binary_mark.is_none()
                 }
                 Err(e) => {
                     eprintln!("Encountered error: {}", e);
-                    return false;
+                    false
                 }
             }
         }
@@ -118,7 +118,7 @@ impl QuickOpen {
     // Returns a list of fuzzy find results sorted by score.
     pub(crate) fn get_quick_open_results(&mut self) -> &Vec<FuzzyResult> {
         self.current_fuzzy_results.sort_by(|a, b| b.score.cmp(&a.score));
-        return &self.current_fuzzy_results;
+        &self.current_fuzzy_results
     }
 
     // Initiates a new fuzzy match session.
@@ -197,13 +197,13 @@ impl QuickOpen {
         let shortened_text = &text[text_current_idx..];
 
         let mut pattern_chars = shortened_pattern.chars();
-        let mut text_chars = shortened_text.chars();
+        let text_chars = shortened_text.chars();
 
         let mut pat_char =
             pattern_chars.next().expect("Pattern should at least have one character");
 
         eprintln!("Comparing {} with {}", pattern, shortened_text);
-        while let Some(text_char) = text_chars.next() {
+        for text_char in text_chars {
             // Recursions went through all chars in `text`, so stop.
             if text_current_idx >= text.len() && pattern_current_idx >= pattern.len() { 
                 break
@@ -264,11 +264,11 @@ impl QuickOpen {
         if recursive_matched && (!matched || best_recursive_score > score) {
             match_indices = best_recursive_match_indices;
             score = best_recursive_score;
-            return (match_indices, score);
+            (match_indices, score)
         } else if matched {
-            return (match_indices, score);
+            (match_indices, score)
         } else {
-            return (vec![], 0);
+            (vec![], 0)
         }
     }
 
@@ -324,6 +324,6 @@ impl QuickOpen {
                 score += FIRST_LETTER_BONUS;
             }
         }
-        return score;
+        score
     }
 }
